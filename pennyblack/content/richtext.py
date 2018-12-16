@@ -1,6 +1,7 @@
+from django import forms
 from django.core import files
 from django.db import models
-from django.forms.util import ErrorList
+from django.forms.utils import ErrorList
 from django.template import Context, Template, TemplateSyntaxError
 from django.utils.safestring import mark_safe
 from django.utils.translation import ugettext_lazy as _
@@ -8,7 +9,7 @@ from django.utils.translation import ugettext_lazy as _
 from pennyblack import settings
 from pennyblack.models.link import check_if_redirect_url, is_link
 
-from feincms.content.richtext.models import RichTextContentAdminForm, RichTextContent
+from feincms.content.richtext.models import RichTextContent
 from feincms.module.medialibrary.models import MediaFile
 
 import re
@@ -21,7 +22,7 @@ import exceptions
 
 HREF_RE = re.compile(r'href\="((\{\{[^}]+\}\}|[^"><])+)"')
 
-class NewsletterSectionAdminForm(RichTextContentAdminForm):
+class NewsletterSectionAdminForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super(NewsletterSectionAdminForm, self).clean()
         try:
@@ -37,10 +38,10 @@ class NewsletterSectionAdminForm(RichTextContentAdminForm):
         except exceptions.KeyError:
             pass
         return cleaned_data
-    
+
     class Meta:
         exclude = ('image_thumb', 'image_width', 'image_height', 'image_url_replaced')
-    
+
     def __init__(self, *args, **kwargs):
         super(NewsletterSectionAdminForm, self).__init__(*args, **kwargs)
         self.fields.insert(0, 'title', self.fields.pop('title'))
@@ -56,7 +57,7 @@ class TextOnlyNewsletterContent(RichTextContent):
     feincms_item_editor_includes = {
         'head': [ settings.TINYMCE_CONFIG_URL ],
         }
-    
+
     baselayout = "content/text_only/section.html"
 
     class Meta:
@@ -79,14 +80,14 @@ class TextOnlyNewsletterContent(RichTextContent):
             replacelink = job.add_link(link)
             self.text = ''.join((self.text[:match.start(1)+offset], replacelink, self.text[match.end(1)+offset:]))
             offset += len(replacelink) - len(match.group(1))
-        
+
     def prepare_to_send(self):
         """
         insert link_style into all a tags
         """
         self.text = re.sub(r"<a ","<a style=\"{% get_newsletterstyle request link_style %}\"", self.text)
         self.save()
-        
+
     def get_template(self):
         """
         Creates a template
@@ -96,7 +97,7 @@ class TextOnlyNewsletterContent(RichTextContent):
         {%% block title %%}%s{%% endblock %%}
         {%% block text %%}%s{%% endblock %%}
         """ % (self.baselayout, self.title, self.text,))
-    
+
     def render(self, request, **kwargs):
         context = request.content_context
         context['request'] = request
@@ -118,14 +119,14 @@ class TextWithImageNewsletterContent(TextOnlyNewsletterContent):
     image_url = models.CharField(max_length=250 ,blank=True)
     image_url_replaced = models.CharField(max_length=250, default='')
     position = models.CharField(max_length=10, choices=settings.TEXT_AND_IMAGE_CONTENT_POSITIONS)
-    
+
     baselayout = "content/text_and_image/section.html"
-    
+
     class Meta:
         abstract = True
         verbose_name = _('text and image content')
         verbose_name_plural = _('text and image contents')
-    
+
     def get_extra_context(self):
         text_width = settings.NEWSLETTER_CONTENT_WIDTH if self.position == 'top' else (settings.NEWSLETTER_CONTENT_WIDTH - 20 - settings.TEXT_AND_IMAGE_CONTENT_IMAGE_WIDTH_SIDE)
         return {
@@ -143,13 +144,13 @@ class TextWithImageNewsletterContent(TextOnlyNewsletterContent):
             return self.image_url
         template = Template(self.image_url_replaced)
         return template.render(context)
-            
+
     def replace_links(self, job):
         super(TextWithImageNewsletterContent, self).replace_links(job)
         if not is_link(self.image_url, self.image_url_replaced):
             self.image_url_replaced = job.add_link(self.image_url)
             self.save()
-            
+
     def save(self, *args, **kwargs):
         image_width = settings.NEWSLETTER_CONTENT_WIDTH if self.position == 'top' else settings.TEXT_AND_IMAGE_CONTENT_IMAGE_WIDTH_SIDE
         im=Image.open(self.image_original.file.path)
@@ -159,5 +160,3 @@ class TextWithImageNewsletterContent(TextOnlyNewsletterContent):
         img_temp.flush()
         self.image_thumb.save(os.path.split(self.image_original.file.name)[1], files.File(img_temp), save=False)
         super(TextWithImageNewsletterContent, self).save(*args, **kwargs)
-        
-    

@@ -1,10 +1,10 @@
 from django import forms
 from django.contrib import admin
-from django.contrib.admin.util import unquote
-from django.conf.urls.defaults import patterns, url
-from django.contrib.contenttypes import generic
+from django.contrib.admin.utils import unquote
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.conf.urls import url
 from django.core import mail
-from django.core.context_processors import csrf
+from django.template.context_processors import csrf
 from django.core.urlresolvers import reverse
 from django.db import models
 from django.http import HttpResponseRedirect
@@ -29,23 +29,23 @@ class Job(models.Model):
 
     content_type = models.ForeignKey('contenttypes.ContentType', null=True, blank=True)
     object_id = models.PositiveIntegerField(null=True, blank=True)
-    group_object = generic.GenericForeignKey('content_type', 'object_id')
+    group_object = GenericForeignKey('content_type', 'object_id')
     collection = models.TextField(blank=True)
-    
+
     #ga tracking
     utm_campaign = models.SlugField(verbose_name=_("utm campaign"), blank=True)
-    
-    
+
+
     class Meta:
         ordering = ('-date_created',)
         verbose_name = _("newsletter delivery task")
         verbose_name_plural = _("newsletter delivery tasks")
         app_label = 'pennyblack'
-        
-        
+
+
     def __unicode__(self):
         return (self.newsletter.subject if self.newsletter is not None else "unasigned delivery task")
-    
+
     def delete(self, *args, **kwargs):
         """
         If the job refers to a inactive Newsletter delete it.
@@ -53,11 +53,11 @@ class Job(models.Model):
         if self.newsletter.active == False:
             self.newsletter.delete()
         super(Job, self).delete(*args, **kwargs)
-    
+
     @property
     def count_mails_total(self):
         return self.mails.count()
-    
+
     @property
     def count_mails_sent(self):
         return self.mails.filter(sent=True).count()
@@ -67,11 +67,11 @@ class Job(models.Model):
         if self.count_mails_total == 0:
             return 0
         return round(float(self.count_mails_sent)/float(self.count_mails_total) * 100, 1)
-    
+
     @property
     def count_mails_viewed(self):
         return self.mails.exclude(viewed=None).count()
-    
+
     @property
     def count_mails_delivered(self):
         return self.count_mails_sent - self.count_mails_bounced
@@ -81,7 +81,7 @@ class Job(models.Model):
         if self.count_mails_delivered == 0:
             return 0
         return round(float(self.count_mails_viewed)/self.count_mails_delivered * 100, 1)
-    
+
     @property
     def count_mails_bounced(self):
         return self.mails.filter(bounced=True).count()
@@ -89,7 +89,7 @@ class Job(models.Model):
     @property
     def count_mails_clicked(self):
         return self.mails.filter(clicks__isnull=False).count()
-    
+
     @property
     def percentage_mails_clicked(self):
         if self.count_mails_delivered == 0:
@@ -106,15 +106,15 @@ class Job(models.Model):
     def field_mails_sent(self):
         return self.count_mails_sent
     field_mails_sent.short_description = _('# of mails sent')
-    
+
     def field_opening_rate(self):
         return '%s%%' % self.percentage_mails_viewed
     field_opening_rate.short_description = _('opening rate')
-    
+
     def field_mails_total(self):
         return self.count_mails_total
     field_mails_total.short_description = _('# of mails')
-    
+
 
     def can_send(self):
         """
@@ -128,7 +128,7 @@ class Job(models.Model):
         if self.newsletter == None or not self.newsletter.is_valid():
             return False
         return True
-    
+
     def create_mails(self, queryset):
         """
         Create mails for every NewsletterReceiverMixin in queryset.
@@ -139,15 +139,15 @@ class Job(models.Model):
         else:
             for receiver in queryset:
                 self.create_mail(receiver)
-            
+
     def create_mail(self, receiver):
         """
         Creates a single mail. This is also used in workflow mail send process.
         receiver has to implement all the methods from NewsletterReceiverMixin
         """
         return self.mails.create(person=receiver)
-        
-    
+
+
     def add_link(self, link, identifier=''):
         """
         Adds a link and returns a replacement link
@@ -163,7 +163,7 @@ class Job(models.Model):
         link = self.links.create(link_target=link)
         link.save()
         return '{{base_url}}' + reverse('pennyblack.redirect_link', kwargs={'mail_hash':'{{mail.mail_hash}}','link_hash':link.link_hash}).replace('%7B','{').replace('%7D','}')
-    
+
     def send(self):
         """
         Sends every pending e-mail in the job.
@@ -197,27 +197,27 @@ class JobAdminForm(forms.ModelForm):
 class JobAdmin(admin.ModelAdmin):
     from pennyblack.models.link import LinkInline
     from pennyblack.models.mail import MailInline
-    
+
     date_hierarchy = 'date_deliver_start'
     actions = None
     list_display = ('newsletter', 'group_object', 'status', 'field_mails_total', 'field_mails_sent', 'date_created')
     list_filter   = ('status', 'newsletter',)
     fields = ('newsletter', 'collection', 'status', 'group_object', 'field_mails_total', 'field_mails_sent', 'date_deliver_start', 'date_deliver_finished', 'utm_campaign')
-    readonly_fields = ('collection', 'status', 'group_object', 'field_mails_total', 'field_mails_sent', 'date_deliver_start', 'date_deliver_finished',)    
+    readonly_fields = ('collection', 'status', 'group_object', 'field_mails_total', 'field_mails_sent', 'date_deliver_start', 'date_deliver_finished',)
     inlines = (LinkInline, MailInline,)
     massmail_form = JobAdminForm
-    
+
     def get_form(self, request, obj=None, **kwargs):
         if obj and obj.status in settings.JOB_STATUS_CAN_EDIT:
             kwargs['form'] = self.massmail_form
         return super(JobAdmin, self).get_form(request, obj, **kwargs)
-    
+
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.status in settings.JOB_STATUS_CAN_EDIT:
             return self.readonly_fields
         else:
             return self.readonly_fields + ('newsletter',)
-            
+
     def change_view(self, request, object_id, extra_context={}):
         obj = self.get_object(request, unquote(object_id))
         extra_context['can_send']=obj.can_send()
@@ -250,17 +250,17 @@ class JobAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super(JobAdmin, self).get_urls()
         info = self.model._meta.app_label, self.model._meta.module_name
-        my_urls = patterns('',
+        my_urls = (
             url(r'^(?P<object_id>\d+)/send/$', self.admin_site.admin_view(self.send_newsletter_view), name=('%s_%s_send' % info)),
         )
         return my_urls + urls
-    
+
     def has_add_permission(self, request):
         return False
 
     def has_delete_permission(self, request, obj=None):
         return False
-    
+
 
 #-----------------------------------------------------------------------------
 # Job
@@ -271,14 +271,14 @@ class JobStatistic(Job):
         verbose_name = _("statistic")
         verbose_name_plural = _("statistics")
         app_label = 'pennyblack'
-        
+
 class JobStatisticAdmin(admin.ModelAdmin):
     date_hierarchy = 'date_deliver_start'
     actions = None
     list_display = ('newsletter', 'group_object', 'field_mails_total', 'field_mails_sent', 'field_opening_rate', 'date_created')
     # list_filter   = ('status', 'newsletter',)
     fields = ('newsletter', 'collection', 'group_object', 'date_deliver_start', 'date_deliver_finished', 'utm_campaign')
-    readonly_fields = ('newsletter', 'collection', 'group_object', 'date_deliver_start', 'date_deliver_finished', 'utm_campaign')    
+    readonly_fields = ('newsletter', 'collection', 'group_object', 'date_deliver_start', 'date_deliver_finished', 'utm_campaign')
 
     def queryset(self, request):
         return self.model.objects.exclude(status=1)
@@ -307,7 +307,7 @@ class JobStatisticAdmin(admin.ModelAdmin):
         return {
             'opened_serie': ','.join(opened_serie),
         }
-         
+
     def change_view(self, request, object_id, extra_context={}):
         obj = self.get_object(request, unquote(object_id))
         graph_data = self.get_graph_data(obj)
