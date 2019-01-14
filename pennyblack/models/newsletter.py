@@ -19,6 +19,9 @@ from pennyblack import settings
 #-----------------------------------------------------------------------------
 # Newsletter
 #-----------------------------------------------------------------------------
+from pennyblack.views import preview
+
+
 class NewsletterManager(models.Manager):
     def active(self):
         """
@@ -244,7 +247,7 @@ class NewsletterAdmin(ItemEditor, admin.ModelAdmin):
 
     def get_urls(self):
         urls = super(NewsletterAdmin, self).get_urls()
-        my_urls = (
-            (r'^(?P<newsletter_id>\d+)/preview/$', 'pennyblack.views.preview'),
-        )
+        my_urls = [
+            (r'^(?P<newsletter_id>\d+)/preview/$', preview),
+        ]
         return my_urls + urls
