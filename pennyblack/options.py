@@ -99,7 +99,7 @@ class JobUnitAdmin(admin.ModelAdmin):
         return render_to_response('admin/pennyblack/jobunit/select_receiver_collection.html',context)
 
     def get_urls(self):
-        from django.conf.urls.defaults import url
+        from django.conf.urls import url
         urls = super(JobUnitAdmin, self).get_urls()
         info = self.model._meta.app_label, self.model._meta.model_name
         my_urls = [
